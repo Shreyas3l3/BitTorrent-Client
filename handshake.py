@@ -1,5 +1,5 @@
-import socket
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -9,31 +9,29 @@ class Handshake:
         self.port = port
         self.info_hash = info_hash
         self.peer_id = peer_id
-        self.socket = None
         self.handshake = False
+        self.writer = None
+        self.reader = None
 
-    def connect_with_peer(self):
+    async def connect_with_peer(self):
 
         """
         Creates a socket with server and validates handshake message 
         """
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(3)
-
+        writer = None
         try:
-            s.connect((self.ip, self.port))
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(self.ip, self.port), timeout=3)
+            self.writer = writer
+            self.reader = reader
             logger.debug(f"Successfully connected to {self.ip}, {self.port}")
 
-        except socket.timeout:
-            logger.debug(f"Connection timed out to {self.ip}") 
-            s.close()  
-            return False  
-        
-        except socket.error as e:
+        except Exception as e:
             logger.debug(f"Error: {e} to {self.ip}")
-            s.close()
-            return False
+        except asyncio.TimeoutError:
+            logger.debug(f"Connection timed out to {self.ip}")
+        if writer is None:
+            return False         
 
         pstr = b"BitTorrent protocol"
         pstrlen = bytes([len(pstr)])
@@ -43,34 +41,24 @@ class Handshake:
         handshake_message = pstrlen + pstr + reserved + info_hash + peer_id
 
         try:
-            s.sendall(handshake_message)
-
-        except socket.timeout:
-            logger.debug(f"Timed out sending handshake to {self.ip}")
-            s.close()
-            return False
-        
-        except socket.error as e:
-            logger.debug(f"Error occurred when sending handshake {e} to {self.ip}")
-            s.close()
+            writer.write(handshake_message)
+            await writer.drain()
+        except Exception as e:
+            logger.debug(f"Error: {e} to {self.ip}")
+            await self.close_writer(writer)
             return False
      
         try:
-            reply =  s.recv(68)
+            reply = await reader.read(68)
 
-        except socket.timeout:
-            logger.debug(f"Timed out while recieving handshake from {self.ip}")
-            s.close()
-            return False    
-        
-        except socket.error as e:
-            logger.debug(f"Handshake not recieved {e} from {self.ip}")
-            s.close()
+        except Exception as e:
+            logger.debug(f"Error: {e} to {self.ip}")
+            await self.close_writer(writer) 
             return False
 
         if len(reply) != 68:
             logger.debug(f"Incorrect or incomplete handshake reply from {self.ip}")
-            s.close()
+            await self.close_writer(writer) 
             return False
         
         reply_pstr = reply[1:1 + reply[0]]
@@ -79,20 +67,29 @@ class Handshake:
     
         if reply_pstr != pstr:
             logger.debug(f"Invalid handshake reply from {self.ip}")
-            s.close()
+            await self.close_writer(writer)  
             return False
         
         if reply_info_hash != info_hash:
             logger.debug(f"Info hash not matched from {self.ip}")
-            s.close()
+            await self.close_writer(writer)
             return False
     
         self.handshake = True
-        self.socket = s
         logger.debug(f"Handshake successful between {self.ip}")
         return True
 
+    async def close_writer(self, writer):
 
+        """
+        Closes writer safely
+        """
+
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception as e:
+            logger.debug(f"Error while closing connection to {self.ip}: {e}")
 
     
     

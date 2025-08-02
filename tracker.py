@@ -1,11 +1,9 @@
 import logging 
-from urllib.parse import urlparse
 import urllib.parse
 import requests
 import bencodepy
 import socket 
 import struct
-import random
 
 logger = logging.getLogger(__name__)
 
@@ -60,109 +58,7 @@ class Tracker:
             list_of_peers.append((ip,tracker_port))
         return list_of_peers 
     
-    def generate_session_key(self):
-        return random.randint(0, 0xFFFFFFFF)
 
-    def send_connect_request(self):
-
-        """
-        This functions handles udp protocol to communicate with the server to get peer list
-        """
-
-        tracker_url = urlparse(self.announce)
-        hostname = tracker_url.hostname
-        port = tracker_url.port
-
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-        server_address = (hostname, port)
-        s.settimeout(7)
-
-        protocol_id = 0x41727101980
-        action = 0
-        transaction_id = self.generate_session_key()
-        connect_request_mssg = struct.pack("!QLL", protocol_id, action, transaction_id)
-
-        for _ in range(3):
-            try:
-                s.sendto(connect_request_mssg, server_address)
-                logger.debug(f"Sent connect request message to {server_address}")
-            except socket.timeout:
-                logger.debug(f"Timed out sending message to {server_address}")
-                continue
-
-            try:
-                reply = s.recvfrom(16)[0]  
-                logger.debug("Successfully received response") 
-            except socket.timeout:
-                logger.debug(f"Timed out receiving reply from {server_address}")     
-                continue
-
-            if len(reply) != 16:
-                logger.debug("Reply was too short")
-                continue
-        
-            elif struct.unpack(">I", reply[:4])[0] != 0:    
-                logger.debug("Action field not 0")
-                continue
-        
-            elif struct.unpack(">I", reply[4:8])[0] != transaction_id:
-                logger.debug(f"Transaction id not matched, received {reply[4:8]} instead of {transaction_id}")  
-                continue
-
-            connection_id = struct.unpack(">Q",reply[8:16])[0]
-            action = 1     
-            event = 2   
-            temp_ip = 0
-            num_want = -1
-            key = self.generate_session_key()
-            announce_transaction_id = self.generate_session_key()
-
-            announce_request = struct.pack(">QLL20s20sQQQLLLiH", 
-                                        connection_id,
-                                        action,
-                                        announce_transaction_id, 
-                                        self.info_hash,
-                                        self.peer_id.encode("utf-8"),
-                                        self.downloaded,
-                                        self.left,
-                                        self.uploaded,
-                                        event,
-                                        temp_ip,
-                                        key,
-                                        num_want,
-                                        port,
-                                      )
-            try:
-                s.sendto(announce_request, server_address)
-                logger.debug("Sent announce request")
-            except socket.timeout:
-                logger.debug("Timed out sending announce request")
-                continue
-
-            try:
-                response, address_two = s.recvfrom(4096) 
-                logger.debug("Successfully received response")
-            except socket.timeout:
-                logger.debug("Timed out receiving announce request response")
-                continue
-
-            if len(response) < 20:
-                logger.debug("No peer list received")    
-                continue
-
-            elif struct.unpack(">I", response[0:4])[0] != 1:
-                logger.debug("Incorrect announce response")
-                continue
-
-            elif struct.unpack(">I", response[4:8])[0] != announce_transaction_id:   
-                logger.debug("Transaction id does not match")
-                continue
-
-            logger.debug(f"Seeders available: {struct.unpack(">I", response[16:20])[0]}")
-            return response[20:]
-        
-        s.close()
-        return None
 
         
         
