@@ -1,5 +1,5 @@
-```markdown
-A command line BitTorrent client in Python.
+
+# A command line BitTorrent client in Python.
 
 To download and use yourself, first clone this repo:
 
@@ -17,7 +17,6 @@ You can then run the program by doing the following:
 
 ```bash
 python3 BT/main.py (link-to-torrent.torrent)
-```
 ```
 
 
