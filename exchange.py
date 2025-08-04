@@ -211,7 +211,6 @@ class exchange:
             one_piece_completed = False
 
             for piece_index in sorted(common):
-                try:
                     
                     if await self.piece_manager.is_piece_complete(piece_index): 
                         continue
@@ -286,20 +285,20 @@ class exchange:
                         full_piece_data += got_blocks[j * block_size]
 
                     if self.verify_piece(piece_index, full_piece_data):
-                        await asyncio.wait_for(self.piece_manager.piece_complete(piece_index, full_piece_data), timeout=5)
-                        logger.debug(f"Completed piece {piece_index}\n")
-                        one_piece_completed = True
+                        try:
+                            await asyncio.wait_for(self.piece_manager.piece_complete(piece_index, full_piece_data), timeout=30)
+                            logger.debug(f"Completed piece {piece_index}\n")
+                            one_piece_completed = True
+                        except asyncio.TimeoutError:
+                            logger.debug(f"Piece {piece_index} timed out in piece complete function")
+                            async with self.piece_manager.lock:
+                                await self.piece_manager.piece_failed(piece_index)
+                                continue  
 
                     else:
                         logger.debug(f"Piece {piece_index} failed hash check")
                         async with self.piece_manager.lock:
                             await self.piece_manager.piece_failed(piece_index)
-
-                except Exception as e:
-                    logger.error(f"Fatal error downloading piece {piece_index} from {self.ip}: {e}")
-                    async with self.piece_manager.lock:
-                        await self.piece_manager.piece_failed(piece_index)
-                    continue
 
             if not one_piece_completed and self.consecutive_failures > 0:
                 logger.debug(f"No progress made with {self.ip}, abandoning peer")
