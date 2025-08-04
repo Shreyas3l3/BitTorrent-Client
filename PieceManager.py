@@ -41,7 +41,7 @@ class PieceManager:
             for piece in list(self.downloading_pieces):
                 if piece in self.have_pieces:
                     self.downloading_pieces.discard(piece)
-            print(f"{len(self.have_pieces)} and {self.total_pieces}")
+            logger.debug(f"{len(self.have_pieces)} and {self.total_pieces}")
             return len(self.have_pieces) == self.total_pieces   
     
     async def get_missing_pieces(self):
