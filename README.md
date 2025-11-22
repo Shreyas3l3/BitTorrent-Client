@@ -19,4 +19,3 @@ You can then run the program by doing the following:
 python3 BT/main.py (link-to-torrent.torrent)
 ```
 
-Todo - add support for torrents which use udp protocol to communicate with tracker
